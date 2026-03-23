@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:telephony/telephony.dart';
+import 'package:telephony_fix/telephony.dart';
 import '../parsers/sms_parser.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/models/transaction.dart';

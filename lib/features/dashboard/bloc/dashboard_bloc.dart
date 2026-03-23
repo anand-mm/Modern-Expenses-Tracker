@@ -14,6 +14,8 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
   DateTime? _selectedDate;
   double? _minAmount;
   double? _maxAmount;
+  TransactionType? _selectedType;
+  String? _searchQuery;
 
   DashboardBloc() : super(DashboardInitial()) {
     on<AppOpened>(_onAppOpened);
@@ -24,6 +26,7 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     on<ClearTransactionFilters>(_onClearTransactionFilters);
     on<ChangeMonth>(_onChangeMonth);
     on<LoadDummyData>(_onLoadDummyData);
+    on<UpdateTransactionCategory>(_onUpdateTransactionCategory);
   }
 
   Future<void> _onAppOpened(AppOpened event, Emitter<DashboardState> emit) async {
@@ -41,51 +44,73 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     emit(DashboardLoading());
     try {
       final allMonthTransactions = await _databaseHelper.getTransactionsForMonth(_selectedMonth.year, _selectedMonth.month);
-      final debitMonthTransactions = allMonthTransactions.where((t) => t.type == TransactionType.debit).toList();
-      final transactions = _applyFilters(debitMonthTransactions);
+      
+      final prevMonthYear = _selectedMonth.month == 1 ? _selectedMonth.year - 1 : _selectedMonth.year;
+      final prevMonthMonth = _selectedMonth.month == 1 ? 12 : _selectedMonth.month - 1;
+      final prevMonthTransactions = await _databaseHelper.getTransactionsForMonth(prevMonthYear, prevMonthMonth);
+      final prevDebitMonthTransactions = prevMonthTransactions.where((t) => t.type == TransactionType.debit).toList();
+      double previousMonthSpend = prevDebitMonthTransactions.fold(0, (sum, t) => sum + t.amount);
 
-      final availableMerchants = debitMonthTransactions.map((t) => t.merchant).toSet().where((m) => m.isNotEmpty).toList()
+      final debitMonthTransactions = allMonthTransactions.where((t) => t.type == TransactionType.debit).toList();
+      final filteredTransactions = _applyFilters(allMonthTransactions);
+
+      final availableMerchants = allMonthTransactions.map((t) => t.merchant).toSet().where((m) => m.isNotEmpty).toList()
         ..sort();
       final availableBanks =
-          debitMonthTransactions.map((t) => t.bankName).toSet().where((b) => b.isNotEmpty && b != 'Unknown').toList()..sort();
+          allMonthTransactions.map((t) => t.bankName).toSet().where((b) => b.isNotEmpty && b != 'Unknown').toList()..sort();
 
       final merchantCounts = <String, int>{};
+      final merchantSpends = <String, double>{};
       for (final tx in debitMonthTransactions) {
         if (tx.merchant.isEmpty) continue;
         merchantCounts[tx.merchant] = (merchantCounts[tx.merchant] ?? 0) + 1;
+        merchantSpends[tx.merchant] = (merchantSpends[tx.merchant] ?? 0) + tx.amount;
       }
-      String? mostUsedMerchant;
-      int mostUsedMerchantCount = 0;
-      merchantCounts.forEach((merchant, count) {
-        if (count > mostUsedMerchantCount) {
-          mostUsedMerchantCount = count;
-          mostUsedMerchant = merchant;
-        }
-      });
 
-      const int mostUsedMerchantThreshold = 3;
-      if (mostUsedMerchantCount < mostUsedMerchantThreshold) {
-        mostUsedMerchant = null;
-        mostUsedMerchantCount = 0;
-      }
+      final sortedMerchants = merchantSpends.keys.toList()
+        ..sort((a, b) => merchantSpends[b]!.compareTo(merchantSpends[a]!));
+      
+      final topMerchants = sortedMerchants.take(3).map((m) => {
+        'merchant': m,
+        'count': merchantCounts[m],
+        'amount': merchantSpends[m],
+      }).toList();
+
+      final sortedMerchantsByCount = merchantCounts.keys.toList()
+        ..sort((a, b) => merchantCounts[b]!.compareTo(merchantCounts[a]!));
+      
+      final topMerchantsByCount = sortedMerchantsByCount.take(3).map((m) => {
+        'merchant': m,
+        'count': merchantCounts[m],
+        'amount': merchantSpends[m],
+      }).toList();
 
       int? selectedDateTransactionCount;
       if (_selectedDate != null) {
-        selectedDateTransactionCount = transactions.length;
+        selectedDateTransactionCount = filteredTransactions.length;
       }
 
       final today = DateTime.now();
       final todayDateOnly = DateTime(today.year, today.month, today.day);
       final previousDayDateOnly = todayDateOnly.subtract(const Duration(days: 1));
+      
+      final int currentWeekday = todayDateOnly.weekday;
+      final DateTime startOfWeek = todayDateOnly.subtract(Duration(days: currentWeekday - 1));
 
       double todaySpend = 0;
       double previousDaySpend = 0;
+      double currentWeekSpend = 0;
+
       for (final tx in debitMonthTransactions) {
         final txDateOnly = DateTime(tx.date.year, tx.date.month, tx.date.day);
         if (txDateOnly == todayDateOnly) {
           todaySpend += tx.amount;
         } else if (txDateOnly == previousDayDateOnly) {
           previousDaySpend += tx.amount;
+        }
+        
+        if (!txDateOnly.isBefore(startOfWeek) && !txDateOnly.isAfter(todayDateOnly)) {
+           currentWeekSpend += tx.amount;
         }
       }
 
@@ -107,7 +132,7 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
 
       bool isSameDay(DateTime d1, DateTime d2) => d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
 
-      for (var t in transactions) {
+      for (var t in allMonthTransactions) {
         if (t.type == TransactionType.debit) {
           spend += t.amount;
           categorySpends[t.category] = (categorySpends[t.category] ?? 0) + t.amount;
@@ -127,21 +152,26 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
       dailySpends.sort((a, b) => a.key.compareTo(b.key));
 
       if (_currentSortOption == SortOption.dateDesc) {
-        transactions.sort((a, b) => b.date.compareTo(a.date));
+        filteredTransactions.sort((a, b) => b.date.compareTo(a.date));
       } else if (_currentSortOption == SortOption.dateAsc) {
-        transactions.sort((a, b) => a.date.compareTo(b.date));
+        filteredTransactions.sort((a, b) => a.date.compareTo(b.date));
       } else if (_currentSortOption == SortOption.amountDesc) {
-        transactions.sort((a, b) => b.amount.compareTo(a.amount));
+        filteredTransactions.sort((a, b) => b.amount.compareTo(a.amount));
       } else if (_currentSortOption == SortOption.amountAsc) {
-        transactions.sort((a, b) => a.amount.compareTo(b.amount));
+        filteredTransactions.sort((a, b) => a.amount.compareTo(b.amount));
       }
+
+      final dashboardTransactions = List<Transaction>.from(allMonthTransactions)..sort((a, b) => b.date.compareTo(a.date));
 
       emit(
         DashboardLoaded(
-          transactions: transactions,
+          transactions: dashboardTransactions,
+          filteredTransactions: filteredTransactions,
           totalSpend: spend,
+          previousMonthSpend: previousMonthSpend,
           todaySpend: todaySpend,
           previousDaySpend: previousDaySpend,
+          currentWeekSpend: currentWeekSpend,
           selectedMonth: _selectedMonth,
           sortOption: _currentSortOption,
           selectedMerchant: _selectedMerchant,
@@ -149,10 +179,12 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
           selectedDate: _selectedDate,
           minAmount: _minAmount,
           maxAmount: _maxAmount,
+          selectedType: _selectedType,
+          searchQuery: _searchQuery,
           availableMerchants: availableMerchants,
           availableBanks: availableBanks,
-          mostUsedMerchant: mostUsedMerchant,
-          mostUsedMerchantCount: mostUsedMerchantCount,
+          topMerchants: topMerchants,
+          topMerchantsByCount: topMerchantsByCount,
           selectedDateTransactionCount: selectedDateTransactionCount,
           categorySpends: categorySpends,
           dailySpends: dailySpends,
@@ -187,6 +219,8 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     _selectedDate = event.date;
     _minAmount = event.minAmount;
     _maxAmount = event.maxAmount;
+    _selectedType = event.type;
+    _searchQuery = event.searchQuery;
     add(LoadTransactions());
   }
 
@@ -196,11 +230,24 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     _selectedDate = null;
     _minAmount = null;
     _maxAmount = null;
+    _selectedType = null;
+    _searchQuery = null;
     add(LoadTransactions());
   }
 
   void _onChangeMonth(ChangeMonth event, Emitter<DashboardState> emit) {
     _selectedMonth = event.month;
+    add(LoadTransactions());
+  }
+
+  void _onUpdateTransactionCategory(UpdateTransactionCategory event, Emitter<DashboardState> emit) async {
+    if (event.applyToAll) {
+      await _databaseHelper.insertCategoryMapping(event.merchant, event.newCategory);
+      await _databaseHelper.updateAllTransactionsCategoryByMerchant(event.merchant, event.newCategory);
+    } else {
+      await _databaseHelper.updateTransactionCategory(event.transactionId, event.newCategory);
+    }
+    
     add(LoadTransactions());
   }
 
@@ -499,6 +546,16 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
 
       if (_maxAmount != null && t.amount > _maxAmount!) {
         return false;
+      }
+
+      if (_selectedType != null && t.type != _selectedType) {
+        return false;
+      }
+
+      if (_searchQuery != null && _searchQuery!.isNotEmpty) {
+        if (!t.merchant.toLowerCase().contains(_searchQuery!.toLowerCase())) {
+          return false;
+        }
       }
 
       return true;

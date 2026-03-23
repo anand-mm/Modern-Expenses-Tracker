@@ -1,18 +1,23 @@
+import 'package:expense_tracker/core/widgets/modern_app_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../dashboard/bloc/dashboard_bloc.dart';
 import '../../dashboard/bloc/dashboard_state.dart';
-import 'dart:math';
+import '../../../core/widgets/daily_spend_chart.dart';
+
+import '../../dashboard/bloc/dashboard_event.dart';
 
 class AnalyticsScreen extends StatelessWidget {
-  const AnalyticsScreen({super.key});
+  final VoidCallback? onViewTransactions;
+
+  const AnalyticsScreen({super.key, this.onViewTransactions});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Spend Insights')),
+      appBar: ModernAppBar(title: const Text('Insights')),
       body: BlocBuilder<DashboardBloc, DashboardState>(
         builder: (context, state) {
           if (state is DashboardInitial || state is DashboardLoading) {
@@ -20,8 +25,6 @@ class AnalyticsScreen extends StatelessWidget {
           } else if (state is DashboardError) {
             return Center(child: Text(state.message));
           } else if (state is DashboardLoaded) {
-            final currencyFormat = NumberFormat.currency(symbol: '₹');
-
             if (state.totalSpend == 0 && state.transactions.isEmpty) {
               return const Center(child: Text('No data available for insights.'));
             }
@@ -31,7 +34,11 @@ class AnalyticsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildWeekendComparisonCard(context, state, currencyFormat),
+                  _buildMonthOverMonthChart(context, state),
+                  const SizedBox(height: 24),
+                  _buildTopMerchantsCard(context, state, isByAmount: true),
+                  const SizedBox(height: 24),
+                  _buildTopMerchantsCard(context, state, isByAmount: false),
                   const SizedBox(height: 24),
                   _buildSectionTitle(context, 'Spend by Category'),
                   const SizedBox(height: 16),
@@ -39,7 +46,7 @@ class AnalyticsScreen extends StatelessWidget {
                   const SizedBox(height: 32),
                   _buildSectionTitle(context, 'Daily Spend Trend'),
                   const SizedBox(height: 16),
-                  _buildDailySpendChart(context, state),
+                  DailySpendChart(state: state),
                   const SizedBox(height: 32),
                 ],
               ),
@@ -55,25 +62,13 @@ class AnalyticsScreen extends StatelessWidget {
     return Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold));
   }
 
-  Widget _buildWeekendComparisonCard(BuildContext context, DashboardLoaded state, NumberFormat format) {
-    double diff = state.currentWeekendSpend - state.previousWeekendSpend;
-    double percentage = state.previousWeekendSpend == 0
-        ? (state.currentWeekendSpend > 0 ? 100.0 : 0.0)
-        : (diff / state.previousWeekendSpend) * 100;
-
-    IconData icon = Icons.trending_flat;
-    Color color = Colors.grey;
-    String diffText = 'Same as previous weekend';
-
-    if (diff > 0) {
-      icon = Icons.trending_up;
-      color = Colors.red;
-      diffText = '+${percentage.toStringAsFixed(1)}% up from last weekend';
-    } else if (diff < 0) {
-      icon = Icons.trending_down;
-      color = Colors.green;
-      diffText = '${percentage.abs().toStringAsFixed(1)}% down from last weekend';
+  Widget _buildTopMerchantsCard(BuildContext context, DashboardLoaded state, {bool isByAmount = true}) {
+    final merchants = isByAmount ? state.topMerchants : state.topMerchantsByCount;
+    if (merchants.isEmpty) {
+      return const SizedBox.shrink();
     }
+
+    final format = NumberFormat.currency(symbol: '₹');
 
     return Card(
       elevation: 2,
@@ -83,29 +78,59 @@ class AnalyticsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Weekend Spend',
-              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            Text(
+              isByAmount ? 'Top Merchants (Highest Spend)' : 'Most Visited Merchants',
+              style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
-            Text(format.format(state.currentWeekendSpend), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                  child: Icon(icon, color: color, size: 20),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    diffText,
-                    style: TextStyle(color: color, fontWeight: FontWeight.w600),
+            const SizedBox(height: 16),
+            ...merchants.map((merchantData) {
+              final merchantName = merchantData['merchant'] as String;
+              final count = merchantData['count'] as int;
+              final amount = merchantData['amount'] as double;
+
+              return InkWell(
+                onTap: () {
+                  if (onViewTransactions != null) {
+                    context.read<DashboardBloc>().add(ApplyTransactionFilters(merchant: merchantName));
+                    onViewTransactions!();
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: Colors.blue.shade50, shape: BoxShape.circle),
+                        child: Icon(Icons.storefront, color: Colors.blue.shade600, size: 24),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              merchantName,
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '$count transactions',
+                              style: const TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.w600, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        format.format(amount),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              );
+            }),
           ],
         ),
       ),
@@ -193,85 +218,122 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDailySpendChart(BuildContext context, DashboardLoaded state) {
-    if (state.dailySpends.isEmpty) return const Text('No daily trend data.');
-
-    List<FlSpot> spots = [];
-    double maxX = max(1.0, state.dailySpends.length.toDouble() - 1);
-    double maxY = 0;
-
-    for (int i = 0; i < state.dailySpends.length; i++) {
-      final amount = state.dailySpends[i].value;
-      if (amount > maxY) maxY = amount;
-      spots.add(FlSpot(i.toDouble(), amount));
+  Widget _buildMonthOverMonthChart(BuildContext context, DashboardLoaded state) {
+    if (state.totalSpend == 0 && state.previousMonthSpend == 0) {
+      return const SizedBox.shrink();
     }
 
-    if (spots.length == 1) {
-      spots.add(FlSpot(1.0, spots.first.y));
-    }
+    final format = NumberFormat.currency(symbol: '₹');
+    final double diff = state.totalSpend - state.previousMonthSpend;
+    final bool isIncrease = diff > 0;
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: SizedBox(
-          height: 250,
-          child: LineChart(
-            LineChartData(
-              gridData: const FlGridData(show: false),
-              titlesData: FlTitlesData(
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    getTitlesWidget: (value, meta) {
-                      int index = value.toInt();
-                      if (index >= 0 && index < state.dailySpends.length) {
-                        final date = state.dailySpends[index].key;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(DateFormat('d MMM').format(date), style: const TextStyle(fontSize: 10)),
-                        );
-                      }
-                      return const Text('');
-                    },
-                    reservedSize: 30,
-                    interval: max(1.0, (state.dailySpends.length / 5).ceil().toDouble()),
-                  ),
+    // Compute month names for axis (this month vs last month)
+    final prevMonthDate = DateTime(state.selectedMonth.year, state.selectedMonth.month - 1, 1);
+    final String prevMonthName = DateFormat('MMM').format(prevMonthDate);
+    final String currMonthName = DateFormat('MMM').format(state.selectedMonth);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(context, 'Budget Comparison'),
+        const SizedBox(height: 16),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isIncrease ? Colors.red.shade50 : Colors.green.shade50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isIncrease ? Icons.trending_up : Icons.trending_down,
+                        color: isIncrease ? Colors.red.shade400 : Colors.green.shade400,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        isIncrease
+                            ? 'You have spent ${format.format(diff.abs())} more this month compared to the same time last month'
+                            : (diff == 0
+                                  ? 'Your spending is exactly matching last month.'
+                                  : 'Great job! You spent ${format.format(diff.abs())} less than this time last month'),
+                        style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87),
+                      ),
+                    ),
+                  ],
                 ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 40,
-                    getTitlesWidget: (value, meta) {
-                      if (value == 0) return const Text('');
-                      return Text(NumberFormat.compact().format(value), style: const TextStyle(fontSize: 10));
-                    },
+                const SizedBox(height: 32),
+                SizedBox(
+                  height: 160,
+                  child: BarChart(
+                    BarChartData(
+                      alignment: BarChartAlignment.spaceAround,
+                      maxY: (state.totalSpend > state.previousMonthSpend ? state.totalSpend : state.previousMonthSpend) * 1.2,
+                      barTouchData: BarTouchData(enabled: false),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            getTitlesWidget: (value, meta) {
+                              const style = TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold, fontSize: 13);
+                              final text = value.toInt() == 0 ? prevMonthName : currMonthName;
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(text, style: style),
+                              );
+                            },
+                          ),
+                        ),
+                        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      gridData: const FlGridData(show: false),
+                      barGroups: [
+                        BarChartGroupData(
+                          x: 0,
+                          barRods: [
+                            BarChartRodData(
+                              toY: state.previousMonthSpend,
+                              color: Colors.blueGrey.shade200,
+                              width: 32,
+                              borderRadius: const BorderRadius.only(topLeft: Radius.circular(6), topRight: Radius.circular(6)),
+                            ),
+                          ],
+                          showingTooltipIndicators: [0],
+                        ),
+                        BarChartGroupData(
+                          x: 1,
+                          barRods: [
+                            BarChartRodData(
+                              toY: state.totalSpend,
+                              color: Colors.blue.shade400,
+                              width: 32,
+                              borderRadius: const BorderRadius.only(topLeft: Radius.circular(6), topRight: Radius.circular(6)),
+                            ),
+                          ],
+                          showingTooltipIndicators: [0],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              minX: 0,
-              maxX: maxX,
-              minY: 0,
-              maxY: maxY * 1.2,
-              lineBarsData: [
-                LineChartBarData(
-                  spots: spots,
-                  isCurved: true,
-                  color: Colors.blueAccent,
-                  barWidth: 3,
-                  isStrokeCapRound: true,
-                  dotData: const FlDotData(show: true),
-                  belowBarData: BarAreaData(show: true, color: Colors.blueAccent.withOpacity(0.2)),
                 ),
               ],
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }

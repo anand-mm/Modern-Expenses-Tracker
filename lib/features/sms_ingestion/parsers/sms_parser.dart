@@ -60,6 +60,83 @@ class SmsParser {
     return rawMerchant.trim();
   }
 
+  final Map<String, List<String>> _globalCategoryDictionary = {
+    'Food & Dining': ['swiggy', 'zomato', 'mcdonalds', 'dominos', 'kfc', 'starbucks', 'cafe', 'restaurant', 'eats', 'pizza', 'burger'],
+    'Transport': ['uber', 'ola', 'rapido', 'irctc', 'makemytrip', 'redbus', 'fastag', 'railway', 'metro', 'namma', 'flights', 'indigo'],
+    'Utilities & Groceries': ['jio', 'airtel', 'vi ', 'bescom', 'act fibernet', 'instamart', 'blinkit', 'zepto', 'bigbasket', 'electricity', 'broadband', 'recharge', 'water board'],
+    'Shopping': ['amazon', 'amzn', 'flipkart', 'myntra', 'meesho', 'nykaa', 'dmart', 'reliance', 'ajio', 'tata cliq', 'zudio', 'max ', 'shoppers stop'],
+    'Health': ['apollo', 'pharmeasy', 'netmeds', 'practo', 'hospital', 'clinic', 'pharmacy', 'medical'],
+    'Income': ['salary', 'refund', 'cashback', 'interest', 'dividend'],
+  };
+
+  static const Map<String, List<String>> _bankIdentifiers = {
+    'HDFC': ['HDFC'],
+    'SBI': ['SBI', 'BNKSBI', 'SBIPSG'],
+    'ICICI': ['ICICI'],
+    'Axis': ['AXIS'],
+    'Kotak': ['KOTAK'],
+    'BOB': ['BOB', 'BANK OF BARODA'],
+    'PNB': ['PNB', 'PUNJAB NATIONAL'],
+    'TMB': ['TMB', 'TAMILNAD'],
+    'Canara': ['CANARA'],
+    'Union Bank': ['UBI', 'UNION BANK'],
+    'IDFC': ['IDFC'],
+    'IndusInd': ['INDUS', 'INDUSIND'],
+    'Yes Bank': ['YESBNK', 'YES BANK'],
+  };
+
+  String _determineBank(String? sender, String rawSms) {
+    final uSender = sender?.toUpperCase() ?? '';
+    final uSms = rawSms.toUpperCase();
+    
+    for (var entry in _bankIdentifiers.entries) {
+      for (var identifier in entry.value) {
+        if (uSender.contains(identifier)) {
+          return entry.key;
+        }
+      }
+    }
+    
+    for (var entry in _bankIdentifiers.entries) {
+      for (var identifier in entry.value) {
+        if (uSms.contains(identifier)) {
+          return entry.key;
+        }
+      }
+    }
+    
+    return 'Unknown';
+  }
+
+  Future<String> _determineCategory(String friendlyMerchant) async {
+    final normalized = friendlyMerchant.trim().toLowerCase();
+
+    try {
+      final userMappings = await _dbHelper!.getAllCategoryMappings();
+      for (var entry in userMappings.entries) {
+        if (normalized.contains(entry.key.toLowerCase())) {
+          return entry.value;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    for (var categoryEntry in _globalCategoryDictionary.entries) {
+      for (var keyword in categoryEntry.value) {
+        if (normalized.contains(keyword)) {
+          return categoryEntry.key;
+        }
+      }
+    }
+
+    if (normalized.contains('@upi') || normalized.contains('@ok') || normalized.contains('@ybl') || normalized.contains('@icici')) {
+      return 'Transfer';
+    }
+
+    return 'Uncategorized';
+  }
+
   Future<Transaction?> parseSms(String rawSms, {String? sender}) async {
     try {
       // 1. Determine Type & Amount together if it matches multiline format
@@ -110,6 +187,7 @@ class SmsParser {
       }
 
       merchant = await _getFriendlyMerchantName(merchant);
+      final category = await _determineCategory(merchant);
 
       // 5. Extract Reference Number
       String? referenceNumber;
@@ -119,31 +197,14 @@ class SmsParser {
       }
 
       // 6. Extract Bank Name
-      String bankName = 'Unknown';
-      if (sender != null) {
-        final uSender = sender.toUpperCase();
-        if (uSender.contains('HDFC')) {
-          bankName = 'HDFC';
-        } else if (uSender.contains('TMB') || uSender.contains('TAMILNAD')) {
-          bankName = 'TMB';
-        }
-      }
-
-      if (bankName == 'Unknown') {
-        final uRawSms = rawSms.toUpperCase();
-        if (uRawSms.contains('HDFC')) {
-          bankName = 'HDFC';
-        } else if (uRawSms.contains('TMB') || uRawSms.contains('TAMILNAD')) {
-          bankName = 'TMB';
-        }
-      }
+      String bankName = _determineBank(sender, rawSms);
 
       return Transaction(
         amount: amount,
         type: type,
         merchant: merchant,
         date: date,
-        category: 'Uncategorized',
+        category: category,
         rawText: rawSms,
         referenceNumber: referenceNumber,
         bankName: bankName,

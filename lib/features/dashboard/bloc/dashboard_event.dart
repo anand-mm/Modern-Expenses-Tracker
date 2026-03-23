@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../../../core/models/transaction.dart';
 import 'dashboard_state.dart';
 
 abstract class DashboardEvent extends Equatable {
@@ -36,11 +37,21 @@ class ApplyTransactionFilters extends DashboardEvent {
   final DateTime? date;
   final double? minAmount;
   final double? maxAmount;
+  final TransactionType? type;
+  final String? searchQuery;
 
-  const ApplyTransactionFilters({this.merchant, this.bank, this.date, this.minAmount, this.maxAmount});
+  const ApplyTransactionFilters({
+    this.merchant, 
+    this.bank, 
+    this.date, 
+    this.minAmount, 
+    this.maxAmount, 
+    this.type, 
+    this.searchQuery,
+  });
 
   @override
-  List<Object?> get props => [merchant, bank, date, minAmount, maxAmount];
+  List<Object?> get props => [merchant, bank, date, minAmount, maxAmount, type, searchQuery];
 }
 
 class ClearTransactionFilters extends DashboardEvent {}
@@ -54,4 +65,21 @@ class ChangeMonth extends DashboardEvent {
 
   @override
   List<Object?> get props => [month];
+}
+
+class UpdateTransactionCategory extends DashboardEvent {
+  final int transactionId;
+  final String merchant;
+  final String newCategory;
+  final bool applyToAll;
+
+  const UpdateTransactionCategory({
+    required this.transactionId,
+    required this.merchant,
+    required this.newCategory,
+    required this.applyToAll,
+  });
+
+  @override
+  List<Object?> get props => [transactionId, merchant, newCategory, applyToAll];
 }

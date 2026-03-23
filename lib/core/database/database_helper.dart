@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'dart:io';
 import '../models/transaction.dart' as model;
+import 'dart:convert';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -20,7 +22,7 @@ class DatabaseHelper {
     final defaultPath = await getDatabasesPath();
     final dbPath = join(defaultPath, 'expenses.db');
 
-    return await openDatabase(dbPath, version: 5, onCreate: _onCreate, onUpgrade: _onUpgrade);
+    return await openDatabase(dbPath, version: 6, onCreate: _onCreate, onUpgrade: _onUpgrade);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -44,6 +46,15 @@ class DatabaseHelper {
         CREATE TABLE IF NOT EXISTS app_metadata(
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
+        )
+      ''');
+    }
+    if (oldVersion < 6) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS category_mappings(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          merchant_name TEXT NOT NULL UNIQUE,
+          category TEXT NOT NULL
         )
       ''');
     }
@@ -76,6 +87,14 @@ class DatabaseHelper {
       CREATE TABLE app_metadata(
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE category_mappings(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        merchant_name TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL
       )
     ''');
   }
@@ -213,5 +232,136 @@ class DatabaseHelper {
     final raw = await getAppMetadata('last_used_datetime');
     if (raw == null) return null;
     return DateTime.tryParse(raw);
+  }
+
+  // --- Category Mappings CRUD & Transaction Updates ---
+
+  Future<int> insertCategoryMapping(String merchantName, String category) async {
+    final db = await database;
+    return await db.insert('category_mappings', {
+      'merchant_name': merchantName,
+      'category': category,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<Map<String, String>> getAllCategoryMappings() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('category_mappings');
+
+    final Map<String, String> mappings = {};
+    for (var map in maps) {
+      mappings[map['merchant_name'] as String] = map['category'] as String;
+    }
+    return mappings;
+  }
+
+  Future<int> updateTransactionCategory(int id, String newCategory) async {
+    final db = await database;
+    return await db.update('transactions', {'category': newCategory}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> updateAllTransactionsCategoryByMerchant(String merchant, String category) async {
+    final db = await database;
+    return await db.update('transactions', {'category': category}, where: 'merchant = ?', whereArgs: [merchant]);
+  }
+
+  // --- Custom Categories CRUD ---
+  
+  static const String _categoriesKey = 'custom_categories';
+  static const List<String> _defaultCategories = ['Food & Dining', 'Transport', 'Utilities & Bills', 'Shopping', 'Health', 'Entertainment', 'Transfers'];
+
+  Future<List<String>> getCategories() async {
+    final raw = await getAppMetadata(_categoriesKey);
+    if (raw == null) {
+      return _defaultCategories;
+    }
+    try {
+      final List<dynamic> decoded = jsonDecode(raw);
+      return decoded.map((e) => e.toString()).toList();
+    } catch (e) {
+      return _defaultCategories;
+    }
+  }
+
+  Future<void> addCategory(String category) async {
+    final categories = await getCategories();
+    if (!categories.contains(category)) {
+      categories.add(category);
+      await setAppMetadata(_categoriesKey, jsonEncode(categories));
+    }
+  }
+
+  Future<void> renameCategory(String oldCategory, String newCategory) async {
+    final categories = await getCategories();
+    final index = categories.indexOf(oldCategory);
+    if (index != -1) {
+      categories[index] = newCategory;
+      await setAppMetadata(_categoriesKey, jsonEncode(categories));
+      
+      final db = await database;
+      await db.update('transactions', {'category': newCategory}, where: 'category = ?', whereArgs: [oldCategory]);
+      await db.update('category_mappings', {'category': newCategory}, where: 'category = ?', whereArgs: [oldCategory]);
+    }
+  }
+
+  Future<void> deleteCategory(String category) async {
+    final categories = await getCategories();
+    if (categories.contains(category)) {
+      categories.remove(category);
+      await setAppMetadata(_categoriesKey, jsonEncode(categories));
+      
+      final db = await database;
+      await db.update('transactions', {'category': 'Uncategorized'}, where: 'category = ?', whereArgs: [category]);
+      await db.update('category_mappings', {'category': 'Uncategorized'}, where: 'category = ?', whereArgs: [category]);
+    }
+  }
+
+  // --- Enhanced Data Management ---
+
+  Future<String> exportTransactionsToCsv() async {
+    final transactions = await getAllTransactions();
+    final buffer = StringBuffer();
+    buffer.writeln('ID,Amount,Type,Merchant,Date,Category,RawText,ReferenceNumber,BankName');
+    for (final tx in transactions) {
+      String escape(String? val) {
+        if (val == null) return '';
+        final s = val.replaceAll('"', '""');
+        if (s.contains(',') || s.contains('"') || s.contains('\n')) {
+          return '"$s"';
+        }
+        return s;
+      }
+      buffer.writeln('${tx.id},${tx.amount},${escape(tx.type.name)},${escape(tx.merchant)},${tx.date.toIso8601String()},${escape(tx.category)},${escape(tx.rawText)},${escape(tx.referenceNumber)},${escape(tx.bankName)}');
+    }
+    return buffer.toString();
+  }
+
+  Future<String> getDatabasePath() async {
+    final defaultPath = await getDatabasesPath();
+    return join(defaultPath, 'expenses.db');
+  }
+
+  Future<bool> restoreDatabase(String backupPath) async {
+    try {
+      final dbPath = await getDatabasePath();
+      if (_database != null) {
+        await _database!.close();
+        _database = null;
+      }
+      final File backupFile = File(backupPath);
+      await backupFile.copy(dbPath);
+      _database = await _initDb();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<void> clearAllData() async {
+    final db = await database;
+    await db.delete('transactions');
+    await db.delete('merchant_mappings');
+    await db.delete('category_mappings');
+    await db.delete('app_metadata');
   }
 }
