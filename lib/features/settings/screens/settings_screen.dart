@@ -135,7 +135,7 @@ class SettingsScreen extends StatelessWidget {
                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Database restored successfully!')));
                            context.read<DashboardBloc>().add(LoadTransactions());
                        } else {
-                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to restore database.')));
+                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid database file. Please select a valid .db backup.')));
                        }
                    }
                 }

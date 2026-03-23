@@ -343,12 +343,24 @@ class DatabaseHelper {
 
   Future<bool> restoreDatabase(String backupPath) async {
     try {
+      final File backupFile = File(backupPath);
+      
+      if (!await backupFile.exists()) return false;
+      final randomAccessFile = await backupFile.open();
+      final header = await randomAccessFile.read(16);
+      await randomAccessFile.close();
+      
+      final headerString = String.fromCharCodes(header);
+      if (headerString != 'SQLite format 3\u0000') {
+         return false; // Not a valid SQLite database
+      }
+
       final dbPath = await getDatabasePath();
       if (_database != null) {
         await _database!.close();
         _database = null;
       }
-      final File backupFile = File(backupPath);
+      
       await backupFile.copy(dbPath);
       _database = await _initDb();
       return true;
