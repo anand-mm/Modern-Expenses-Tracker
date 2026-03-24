@@ -69,24 +69,23 @@ class TransactionListItem extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      Row(
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
                           Text(
                             DateFormat('MMM d, h:mm a').format(transaction.date),
                             style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
                           ),
-                          if (transaction.category == 'Uncategorized') ...[
-                            const SizedBox(width: 8),
+                          if (transaction.category == 'Uncategorized')
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                               decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(4)),
                               child: const Text('Add Category', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
                             ),
-                          ],
-                          if (transaction.bankName != 'Unknown') ...[
-                            const SizedBox(width: 8),
+                          if (transaction.bankName != 'Unknown')
                             _buildBankLogo(transaction.bankName),
-                          ],
                         ],
                       ),
                     ],
@@ -133,7 +132,6 @@ class TransactionListItem extends StatelessWidget {
     final color = bankColors[bankName] ?? Colors.blueGrey;
 
     return Container(
-      margin: const EdgeInsets.only(left: 8),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
       child: Text(

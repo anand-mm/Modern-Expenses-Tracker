@@ -7,6 +7,7 @@ import '../../dashboard/bloc/dashboard_state.dart';
 import '../../../core/widgets/transaction_list_item.dart';
 import '../../../core/models/transaction.dart';
 import '../../../core/widgets/modern_app_bar.dart';
+import '../../statement_import/screens/statement_import_screen.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
@@ -149,6 +150,25 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             },
           ),
         ],
+      ),
+      floatingActionButton: BlocBuilder<DashboardBloc, DashboardState>(
+        builder: (context, state) {
+          if (state is DashboardLoaded) {
+            return FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const StatementImportScreen()),
+                );
+              },
+              icon: const Icon(Icons.file_upload),
+              label: const Text('Import Statement'),
+              backgroundColor: Colors.teal,
+              foregroundColor: Colors.white,
+            );
+          }
+          return const SizedBox.shrink();
+        },
       ),
       body: BlocBuilder<DashboardBloc, DashboardState>(
         builder: (context, state) {
