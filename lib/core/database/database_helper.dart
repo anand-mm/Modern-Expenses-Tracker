@@ -130,6 +130,29 @@ class DatabaseHelper {
       return existing.first['id'] as int;
     }
 
+    // Last-resort dedup: same amount + type + date within the same minute.
+    // This catches cross-source duplicates (e.g. SMS vs PhonePe statement import)
+    // where both rawText and referenceNumber differ but the transaction is the same.
+    final dateMinuteStart = DateTime(
+      transaction.date.year, transaction.date.month, transaction.date.day,
+      transaction.date.hour, transaction.date.minute,
+    ).toIso8601String();
+    final dateMinuteEnd = DateTime(
+      transaction.date.year, transaction.date.month, transaction.date.day,
+      transaction.date.hour, transaction.date.minute, 59,
+    ).toIso8601String();
+
+    final List<Map<String, dynamic>> existingByAmountDate = await db.query(
+      'transactions',
+      where: 'amount = ? AND type = ? AND date >= ? AND date <= ?',
+      whereArgs: [transaction.amount, transaction.type.name, dateMinuteStart, dateMinuteEnd],
+      limit: 1,
+    );
+
+    if (existingByAmountDate.isNotEmpty) {
+      return existingByAmountDate.first['id'] as int;
+    }
+
     return await db.insert('transactions', transaction.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 

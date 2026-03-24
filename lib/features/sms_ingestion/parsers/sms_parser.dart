@@ -168,9 +168,33 @@ class SmsParser {
       DateTime date = DateTime.now(); // Fallback to current time
       final dateMatch = _dateRegex.firstMatch(rawSms);
       if (dateMatch != null) {
-        // Real parsing of India-specific date formats (DD-MM-YYYY, etc.) can be complex,
-        // so we'll grab it, but in a real app we'd format it strictly with intl's DateFormat.
-        // For this scaffold, we stick with DateTime.now() since raw text parse to DateTime natively is fragile.
+        try {
+          final raw = dateMatch.group(1)!;
+          // Normalise separators to '-'
+          final normalised = raw.replaceAll('/', '-');
+          final parts = normalised.split('-');
+          if (parts.length == 3) {
+            final day   = int.parse(parts[0]);
+            int month;
+            int year;
+
+            // Check if middle part is alphabetic month (e.g. Jan, Feb…)
+            final monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+            final monthIdx = monthNames.indexOf(parts[1].toLowerCase());
+            if (monthIdx >= 0) {
+              month = monthIdx + 1; // e.g. Jan → 1
+            } else {
+              month = int.parse(parts[1]);
+            }
+
+            year = int.parse(parts[2]);
+            if (year < 100) year += 2000; // Handle 2-digit year (24 → 2024)
+
+            date = DateTime(year, month, day);
+          }
+        } catch (_) {
+          date = DateTime.now();
+        }
       }
 
       // 4. Extract Merchant

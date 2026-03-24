@@ -14,6 +14,7 @@ abstract class StatementParser {
     required TransactionType type,
     String? bankName,
     String? rawText,
+    String? referenceNumber,
   }) {
     return Transaction(
       id: id,
@@ -24,6 +25,7 @@ abstract class StatementParser {
       merchant: merchant,
       bankName: bankName ?? 'Unknown',
       rawText: rawText ?? 'Imported Statement Transaction',
+      referenceNumber: referenceNumber,
     );
   }
 }

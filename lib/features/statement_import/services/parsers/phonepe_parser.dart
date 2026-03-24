@@ -164,6 +164,11 @@ class PhonePeParser extends StatementParser {
         }
       }
 
+      // Extract PhonePe Transaction ID (present in every row as "Transaction ID XXXXXXXXX")
+      final txnIdRegExp = RegExp(r'Transaction\s+ID\s+([A-Za-z0-9]{8,25})', caseSensitive: false);
+      final txnIdMatch = txnIdRegExp.firstMatch(chunk);
+      final referenceNumber = txnIdMatch?.group(1)?.trim();
+
       return createTransaction(
         id: null,
         merchant: merchant,
@@ -172,6 +177,7 @@ class PhonePeParser extends StatementParser {
         type: type,
         bankName: bankName,
         rawText: chunk.replaceAll('\n', ' ').trim(),
+        referenceNumber: referenceNumber,
       );
     } catch (e) {
       return null;
