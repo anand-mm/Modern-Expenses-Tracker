@@ -240,7 +240,7 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     add(LoadTransactions());
   }
 
-  void _onUpdateTransactionCategory(UpdateTransactionCategory event, Emitter<DashboardState> emit) async {
+  Future<void> _onUpdateTransactionCategory(UpdateTransactionCategory event, Emitter<DashboardState> emit) async {
     if (event.applyToAll) {
       await _databaseHelper.insertCategoryMapping(event.merchant, event.newCategory);
       await _databaseHelper.updateAllTransactionsCategoryByMerchant(event.merchant, event.newCategory);
@@ -248,7 +248,8 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
       await _databaseHelper.updateTransactionCategory(event.transactionId, event.newCategory);
     }
     
-    add(LoadTransactions());
+    // Refresh the data
+    await _onLoadTransactions(LoadTransactions(), emit);
   }
 
   Future<void> _onLoadDummyData(LoadDummyData event, Emitter<DashboardState> emit) async {

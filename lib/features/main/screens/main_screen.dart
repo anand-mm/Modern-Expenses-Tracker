@@ -20,37 +20,53 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          DashboardScreen(
-            onViewAll: () {
+    return PopScope(
+      // Allow pop only when on Dashboard (index 0) — exits the app.
+      // On any other tab, intercept and navigate back to Dashboard.
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _currentIndex != 0) {
+          setState(() => _currentIndex = 0);
+        }
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: [
+            DashboardScreen(
+              onViewAll: () {
+                context.read<DashboardBloc>().add(ClearTransactionFilters());
+                setState(() => _currentIndex = 1);
+              },
+            ),
+            const TransactionsScreen(),
+            AnalyticsScreen(onViewTransactions: () => setState(() => _currentIndex = 1)),
+            SettingsScreen(
+              onImportSuccess: (month) {
+                // Reload data and jump to Dashboard after a successful import
+                context.read<DashboardBloc>().add(LoadTransactions());
+                setState(() => _currentIndex = 0);
+              },
+            ),
+          ],
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (index) {
+            if (index == 1) {
               context.read<DashboardBloc>().add(ClearTransactionFilters());
-              setState(() => _currentIndex = 1);
-            },
-          ),
-          const TransactionsScreen(),
-          AnalyticsScreen(onViewTransactions: () => setState(() => _currentIndex = 1)),
-          const SettingsScreen(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          if (index == 1) {
-            context.read<DashboardBloc>().add(ClearTransactionFilters());
-          }
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-          NavigationDestination(icon: Icon(Icons.list_alt), label: 'Transactions'),
-          NavigationDestination(icon: Icon(Icons.pie_chart), label: 'Insights'),
-          NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
-        ],
+            }
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+            NavigationDestination(icon: Icon(Icons.list_alt), label: 'Transactions'),
+            NavigationDestination(icon: Icon(Icons.pie_chart), label: 'Insights'),
+            NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
+          ],
+        ),
       ),
     );
   }

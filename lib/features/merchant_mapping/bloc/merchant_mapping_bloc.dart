@@ -1,6 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/database/database_helper.dart';
-import '../../sms_ingestion/parsers/sms_parser.dart';
 import 'merchant_mapping_event.dart';
 import 'merchant_mapping_state.dart';
 
@@ -27,8 +26,9 @@ class MerchantMappingBloc extends Bloc<MerchantMappingEvent, MerchantMappingStat
   Future<void> _onAddMerchantMapping(AddMerchantMapping event, Emitter<MerchantMappingState> emit) async {
     try {
       await _dbHelper.insertMerchantMapping(event.rawName, event.friendlyName);
-      await _reapplyMappingsToExistingTransactions();
-      add(LoadMerchantMappings());
+      // Directly update all existing transactions that match the raw pattern
+      await _dbHelper.updateAllTransactionsMerchantByRawPattern(event.rawName, event.friendlyName);
+      await _onLoadMerchantMappings(LoadMerchantMappings(), emit);
     } catch (e) {
       emit(MerchantMappingError(message: 'Failed to add mapping: ${e.toString()}'));
     }
@@ -37,28 +37,9 @@ class MerchantMappingBloc extends Bloc<MerchantMappingEvent, MerchantMappingStat
   Future<void> _onDeleteMerchantMapping(DeleteMerchantMapping event, Emitter<MerchantMappingState> emit) async {
     try {
       await _dbHelper.deleteMerchantMappingByRawName(event.rawName);
-      await _reapplyMappingsToExistingTransactions();
-      add(LoadMerchantMappings());
+      await _onLoadMerchantMappings(LoadMerchantMappings(), emit);
     } catch (e) {
       emit(MerchantMappingError(message: 'Failed to delete mapping: ${e.toString()}'));
-    }
-  }
-
-  Future<void> _reapplyMappingsToExistingTransactions() async {
-    try {
-      final parser = SmsParser(dbHelper: _dbHelper);
-      final allTransactions = await _dbHelper.getAllTransactions();
-
-      for (var tx in allTransactions) {
-        if (tx.id != null) {
-          final parsedTx = await parser.parseSms(tx.rawText);
-          if (parsedTx != null && parsedTx.merchant != 'Unknown' && parsedTx.merchant != tx.merchant) {
-            await _dbHelper.updateTransactionMerchant(tx.id!, parsedTx.merchant);
-          }
-        }
-      }
-    } catch (e) {
-      // Fail silently for background tasks, user will just see mappings list.
     }
   }
 }

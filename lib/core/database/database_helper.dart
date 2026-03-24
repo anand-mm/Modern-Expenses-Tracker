@@ -181,6 +181,26 @@ class DatabaseHelper {
     return await db.update('transactions', {'merchant': newMerchant}, where: 'id = ?', whereArgs: [id]);
   }
 
+  Future<int> updateAllTransactionsMerchantByRawPattern(String rawPattern, String friendlyName) async {
+    final db = await database;
+    // Fetch all transactions and update those whose merchant contains the raw pattern
+    final List<Map<String, dynamic>> maps = await db.query('transactions');
+    int updatedCount = 0;
+    for (final row in maps) {
+      final merchant = row['merchant'] as String? ?? '';
+      if (merchant.toUpperCase().contains(rawPattern.toUpperCase())) {
+        await db.update(
+          'transactions',
+          {'merchant': friendlyName},
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+        updatedCount++;
+      }
+    }
+    return updatedCount;
+  }
+
   // --- Merchant Mappings CRUD ---
 
   Future<int> insertMerchantMapping(String rawName, String friendlyName) async {
@@ -273,13 +293,13 @@ class DatabaseHelper {
   Future<List<String>> getCategories() async {
     final raw = await getAppMetadata(_categoriesKey);
     if (raw == null) {
-      return _defaultCategories;
+      return List.from(_defaultCategories);
     }
     try {
       final List<dynamic> decoded = jsonDecode(raw);
       return decoded.map((e) => e.toString()).toList();
     } catch (e) {
-      return _defaultCategories;
+      return List.from(_defaultCategories);
     }
   }
 

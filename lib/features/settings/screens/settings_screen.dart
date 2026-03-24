@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../merchant_mapping/screens/merchant_mapping_screen.dart';
+import '../../statement_import/screens/statement_import_screen.dart';
 import '../../category_management/screens/manage_categories_screen.dart';
 import '../../dashboard/bloc/dashboard_bloc.dart';
 import '../../dashboard/bloc/dashboard_event.dart';
@@ -13,7 +14,9 @@ import '../../../core/database/database_helper.dart';
 import '../../../core/widgets/modern_app_bar.dart';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+  final void Function(DateTime month)? onImportSuccess;
+
+  const SettingsScreen({super.key, this.onImportSuccess});
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +68,27 @@ class SettingsScreen extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             child: Text('Data Management', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
           ),
+          ListTile(
+            leading: const Icon(Icons.file_upload),
+            title: const Text('Import Statement'),
+            subtitle: const Text('Import transactions from a bank statement file'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => StatementImportScreen(
+                    onImportSuccess: onImportSuccess,
+                  ),
+                ),
+              ).then((_) {
+                if (context.mounted && onImportSuccess == null) {
+                  context.read<DashboardBloc>().add(LoadTransactions());
+                }
+              });
+            },
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.history),
             title: const Text('Scan SMS (Last 7 Days)'),

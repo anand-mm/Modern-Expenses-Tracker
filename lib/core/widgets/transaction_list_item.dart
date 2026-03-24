@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/transaction.dart';
 import '../../features/dashboard/bloc/dashboard_bloc.dart';
 import '../../features/dashboard/bloc/dashboard_event.dart';
+import '../database/database_helper.dart';
 
 class TransactionListItem extends StatelessWidget {
   final Transaction transaction;
@@ -146,9 +147,9 @@ class TransactionListItem extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (context) {
+      builder: (detailSheetContext) {
         return Padding(
-          padding: EdgeInsets.only(top: 24, left: 24, right: 24, bottom: MediaQuery.of(context).padding.bottom + 24),
+          padding: EdgeInsets.only(top: 24, left: 24, right: 24, bottom: MediaQuery.of(detailSheetContext).padding.bottom + 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,13 +162,13 @@ class TransactionListItem extends StatelessWidget {
                   decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
                 ),
               ),
-              Text('Transaction Details', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+              Text('Transaction Details', style: Theme.of(detailSheetContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               _detailRow('Amount', _formatSignedAmount(currencyFormat, t)),
               _detailRow('Date', DateFormat.yMMMd().add_jm().format(t.date)),
               _detailRow('Merchant', t.merchant),
               _detailRow('Type', t.type == TransactionType.credit ? 'Credit' : 'Debit'),
-              _detailRowWithEdit(context, 'Category', t.category, () => _showCategoryPicker(context, t)),
+              _detailRowWithEdit(detailSheetContext, 'Category', t.category, () => _showCategoryPicker(context, detailSheetContext, t)),
               if (t.bankName != 'Unknown') _detailRow('Bank', t.bankName),
               if (t.referenceNumber != null) _detailRow('Ref No', t.referenceNumber!),
               const SizedBox(height: 16),
@@ -220,48 +221,81 @@ class TransactionListItem extends StatelessWidget {
     );
   }
 
-  void _showCategoryPicker(BuildContext context, Transaction t) {
+  // rootContext = the widget's outer context (has DashboardBloc)
+  // detailSheetContext = the transaction details sheet context
+  void _showCategoryPicker(BuildContext rootContext, BuildContext detailSheetContext, Transaction t) {
     showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (sheetContext) {
-        final categories = ['Food & Dining', 'Transport', 'Utilities & Groceries', 'Shopping', 'Health', 'Income', 'Transfer', 'Entertainment', 'Housing', 'Travel', 'Uncategorized'];
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text('Select Category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
-              Expanded(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: categories.length,
-                  itemBuilder: (listContext, index) {
-                    return ListTile(
-                      title: Text(categories[index]),
-                      trailing: t.category == categories[index] ? const Icon(Icons.check, color: Colors.teal) : null,
-                      onTap: () {
-                        Navigator.pop(sheetContext);
-                        _confirmCategoryChange(context, t, categories[index]);
+      context: detailSheetContext,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      builder: (categorySheetContext) {
+        return FutureBuilder<List<String>>(
+          future: DatabaseHelper().getCategories(),
+          builder: (_, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
+            }
+            final categories = snapshot.data ?? ['Uncategorized'];
+            if (!categories.contains('Uncategorized')) categories.add('Uncategorized');
+
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 16.0),
+                    child: Text('Select Category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
+                  ),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: categories.length,
+                      separatorBuilder: (_, index) => Divider(height: 1, color: Colors.grey.shade100),
+                      itemBuilder: (_, index) {
+                        final category = categories[index];
+                        final isSelected = t.category == category;
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                          title: Text(
+                            category,
+                            style: TextStyle(
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                              color: isSelected ? Colors.teal : const Color(0xFF334155),
+                            ),
+                          ),
+                          trailing: isSelected ? Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: Colors.teal, shape: BoxShape.circle),
+                            child: const Icon(Icons.check, color: Colors.white, size: 14),
+                          ) : null,
+                          onTap: () {
+                            Navigator.pop(categorySheetContext); // close category picker
+                            _confirmCategoryChange(rootContext, detailSheetContext, t, category);
+                          },
+                        );
                       },
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  void _confirmCategoryChange(BuildContext context, Transaction t, String newCategory) {
+  void _confirmCategoryChange(BuildContext rootContext, BuildContext detailSheetContext, Transaction t, String newCategory) {
     if (t.category == newCategory) return;
     
     showDialog(
-      context: context,
+      context: rootContext,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Update Category'),
@@ -269,9 +303,11 @@ class TransactionListItem extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext); // Close dialog
-                Navigator.pop(context); // Close details sheet
-                context.read<DashboardBloc>().add(
+                // Category picker is already closed; only pop dialog + detail sheet
+                Navigator.of(rootContext)
+                  ..pop() // dialog
+                  ..pop(); // detail sheet
+                rootContext.read<DashboardBloc>().add(
                   UpdateTransactionCategory(
                     transactionId: t.id!,
                     merchant: t.merchant,
@@ -285,9 +321,11 @@ class TransactionListItem extends StatelessWidget {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
               onPressed: () {
-                Navigator.pop(dialogContext); // Close dialog
-                Navigator.pop(context); // Close details sheet
-                context.read<DashboardBloc>().add(
+                // Category picker is already closed; only pop dialog + detail sheet
+                Navigator.of(rootContext)
+                  ..pop() // dialog
+                  ..pop(); // detail sheet
+                rootContext.read<DashboardBloc>().add(
                   UpdateTransactionCategory(
                     transactionId: t.id!,
                     merchant: t.merchant,

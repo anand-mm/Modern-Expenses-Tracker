@@ -26,35 +26,60 @@ class _MerchantMappingScreenState extends State<MerchantMappingScreen> {
       context: parentContext,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Add Merchant Mapping'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Autocomplete<String>(
-              optionsBuilder: (TextEditingValue textEditingValue) {
-                if (textEditingValue.text == '') {
-                  return const Iterable<String>.empty();
-                }
-                return rawMerchants.where((String option) {
-                  return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                });
-              },
-              onSelected: (String selection) {
-                rawNameController.text = selection;
-              },
-              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                return TextField(
-                  controller: textEditingController,
-                  focusNode: focusNode,
-                  onChanged: (value) => rawNameController.text = value,
-                  decoration: const InputDecoration(labelText: 'Raw Bank Name (e.g. VITHELINGAM)'),
-                );
-              },
-            ),
-            TextField(
-              controller: friendlyNameController,
-              decoration: const InputDecoration(labelText: 'Friendly Name (e.g. Teashop)'),
-            ),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Autocomplete<String>(
+                optionsBuilder: (TextEditingValue textEditingValue) {
+                  if (textEditingValue.text == '') {
+                    return const Iterable<String>.empty();
+                  }
+                  return rawMerchants.where((String option) {
+                    return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                  });
+                },
+                onSelected: (String selection) {
+                  rawNameController.text = selection;
+                },
+                optionsViewBuilder: (context, onSelected, options) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4.0,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 200),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final option = options.elementAt(index);
+                            return ListTile(
+                              title: Text(option),
+                              onTap: () => onSelected(option),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                  return TextField(
+                    controller: textEditingController,
+                    focusNode: focusNode,
+                    onChanged: (value) => rawNameController.text = value,
+                    decoration: const InputDecoration(labelText: 'Raw Bank Name (e.g. VITHELINGAM)'),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: friendlyNameController,
+                decoration: const InputDecoration(labelText: 'Friendly Name (e.g. Teashop)'),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),

@@ -44,6 +44,11 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00B4DB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
             onPressed: () async {
               final name = controller.text.trim();
               if (name.isNotEmpty) {
@@ -78,6 +83,11 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00B4DB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
             onPressed: () async {
               final name = controller.text.trim();
               if (name.isNotEmpty && name != oldCategory) {
@@ -154,9 +164,11 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddDialog,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Category'),
-        backgroundColor: const Color(0xFF203A43),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('Add Category', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF00B4DB),
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }

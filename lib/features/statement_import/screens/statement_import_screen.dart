@@ -8,7 +8,9 @@ import '../../dashboard/bloc/dashboard_event.dart';
 import '../../../core/database/database_helper.dart';
 
 class StatementImportScreen extends StatefulWidget {
-  const StatementImportScreen({super.key});
+  final void Function(DateTime month)? onImportSuccess;
+
+  const StatementImportScreen({super.key, this.onImportSuccess});
 
   @override
   State<StatementImportScreen> createState() => _StatementImportScreenState();
@@ -46,12 +48,20 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
           if (mounted) {
             transactions.sort((a, b) => b.date.compareTo(a.date));
             final recentDate = transactions.first.date;
-            context.read<DashboardBloc>().add(ChangeMonth(month: DateTime(recentDate.year, recentDate.month, 1)));
+            final importedMonth = DateTime(recentDate.year, recentDate.month, 1);
+            context.read<DashboardBloc>().add(ChangeMonth(month: importedMonth));
+
+            // Redirect to Dashboard filtered to the imported month
+            if (widget.onImportSuccess != null) {
+              Navigator.of(context).pop();
+              widget.onImportSuccess!(importedMonth);
+            } else {
+              setState(() {
+                _statusMessage = 'Successfully imported ${transactions.length} transactions.';
+                _isProcessing = false;
+              });
+            }
           }
-          setState(() {
-             _statusMessage = 'Successfully imported ${transactions.length} transactions.';
-             _isProcessing = false;
-          });
         } else {
           setState(() {
              _statusMessage = 'No transactions found in this file.';
